@@ -8,6 +8,7 @@ bugsnagAndroidGradle = "8.2.0"
 coil = "2.7.0"
 compose = "1.9.2"
 composeThemeAdapter3 = "1.1.1"
+materialIconsCore = "1.7.8"
 composetooltip = "0.2.0"
 coreKtx = "1.17.0"
 datastorePreferences = "1.1.7"
@@ -37,6 +38,7 @@ compose-material = { module = "androidx.compose.material:material", version.ref 
 compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
 compose-runtime = { module = "androidx.compose.runtime:runtime", version.ref = "compose" }
 compose-theme-adapter3 = { module = "com.google.android.material:compose-theme-adapter-3", version.ref = "composeThemeAdapter3" }
+compose-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "materialIconsCore" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose" }
 composetooltip = { module = "com.github.skgmn:composetooltip", version.ref = "composetooltip" }
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
