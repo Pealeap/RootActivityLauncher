@@ -36,7 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.pm.PackageInfoCompat
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.github.skgmn.composetooltip.AnchorEdge
 import com.github.skgmn.composetooltip.Tooltip
@@ -66,12 +66,16 @@ fun AppBar(
 ) {
     val context = LocalContext.current
 
-    val icon = remember(app is AppModel) {
+    // Key on a stable per-app identity rather than a constant boolean, so
+    // app-specific state captured below isn't stale if the displayed model changes.
+    val appKey = if (app is AppModel) app.info?.packageName ?: "app" else "favorites"
+
+    val icon = remember(appKey) {
         if (app is AppModel) app.info?.getCoilData() else R.drawable.baseline_favorite_24
     }
     val name = if (app is AppModel) app.label.toString() else stringResource(id = R.string.favorites)
 
-    val whichButtons = remember(app is AppModel) {
+    val whichButtons = remember(appKey) {
         if (app is AppModel) {
             listOf(
                 ComponentActionButton.ComponentInfoButton(app.pInfo),
@@ -125,10 +129,10 @@ fun ComponentBar(
 ) {
     val context = LocalContext.current
 
-    val icon = rememberSaveable(component.component.flattenToString()) {
+    val icon = rememberSaveable(component.component) {
         component.getCoilData()
     }
-    val whichButtons = remember(component.component.flattenToString()) {
+    val whichButtons = remember(component.component) {
         arrayListOf(
             ComponentActionButton.FavoriteButton(component),
             ComponentActionButton.ComponentInfoButton(component.info),
@@ -230,12 +234,19 @@ private fun BarGuts(
                     mutableStateOf(false)
                 }
 
-                SubcomposeAsyncImage(
-                    model = ImageRequest.Builder(context)
+                // Build the request once rather than on every recomposition,
+                // and let Coil's own loader be used instead of SubcomposeAsyncImage,
+                // which is far more expensive per scrolled item.
+                val imageRequest = remember(context, icon, subLabel) {
+                    ImageRequest.Builder(context)
                         .crossfade(true)
                         .data(icon)
                         .memoryCacheKey(subLabel)
-                        .build(),
+                        .build()
+                }
+
+                AsyncImage(
+                    model = imageRequest,
                     contentDescription = name,
                     modifier = Modifier
                         .size(if (availability == Availability.NA) 48.dp else 32.dp)

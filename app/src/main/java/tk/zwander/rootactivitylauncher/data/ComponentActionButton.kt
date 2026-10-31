@@ -107,9 +107,10 @@ sealed class ComponentActionButton<T>(protected val data: T) {
         modifier: Modifier = Modifier,
     ) {
         val context = LocalContext.current
+        val label = getLabel()
         val animatedAlpha by animateFloatAsState(
             targetValue = if (!enabled) 0.5f else 1.0f,
-            label = "ComponentButtonAnimation_${getLabel()}",
+            label = "ComponentButtonAnimation_$label",
         )
         val scope = rememberCoroutineScope()
 
@@ -152,7 +153,7 @@ sealed class ComponentActionButton<T>(protected val data: T) {
             ) {
                 Icon(
                     painter = getIcon(),
-                    contentDescription = getLabel(),
+                    contentDescription = label,
                     tint = LocalContentColor.current.copy(alpha = animatedAlpha),
                 )
 
@@ -166,7 +167,7 @@ sealed class ComponentActionButton<T>(protected val data: T) {
                             tipWidth = 0.dp,
                         ),
                     ) {
-                        Text(text = getLabel())
+                        Text(text = label)
                     }
                 }
             }
@@ -514,8 +515,7 @@ sealed class ComponentActionButton<T>(protected val data: T) {
         @Composable
         override fun getIcon(): Painter {
             val context = LocalContext.current
-            val flow = context.flowForType()
-            val state by flow.collectAsState(initial = listOf())
+            val state by remember(context) { context.flowForType() }.collectAsState(initial = listOf())
 
             return rememberVectorPainter(
                 if (state.contains(data.component.flattenToString())) {
@@ -529,8 +529,7 @@ sealed class ComponentActionButton<T>(protected val data: T) {
         @Composable
         override fun getLabel(): String {
             val context = LocalContext.current
-            val flow = context.flowForType()
-            val state by flow.collectAsState(initial = listOf())
+            val state by remember(context) { context.flowForType() }.collectAsState(initial = listOf())
 
             return stringResource(
                 if (state.contains(data.component.flattenToString())) {

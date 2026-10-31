@@ -158,61 +158,81 @@ fun BottomBar(
                     }
                 }
 
-                val firstIndex by remember {
-                    derivedStateOf { appListState.firstVisibleItemIndex }
-                }
-                val lastIndex by remember {
-                    derivedStateOf {
-                        firstIndex + appListState.layoutInfo.visibleItemsInfo.size - 1
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = progress == null && firstIndex > 0 && !isSearching,
-                ) {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                if (firstIndex > 20) {
-                                    appListState.scrollToItem(0)
-                                } else {
-                                    appListState.animateScrollToItem(0)
-                                }
-                            }
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.scroll_to_top),
-                            contentDescription = stringResource(id = R.string.scroll_top)
-                        )
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = progress == null && lastIndex < apps.size - 1 && !isSearching,
-                ) {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                if (apps.size - 1 - lastIndex > 20) {
-                                    appListState.scrollToItem(apps.size - 1)
-                                } else {
-                                    appListState.animateScrollToItem(apps.size - 1)
-                                }
-                            }
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.scroll_to_bottom),
-                            contentDescription = stringResource(id = R.string.scroll_bottom)
-                        )
-                    }
-                }
+                // A single derived state covers both bounds so scrolling
+                // invalidates at most one subtree per frame. The reading
+                // composables live in [ScrollOffsetButtons] so that frame-by-frame
+                // offset changes don't recompose the whole bottom bar.
+                ScrollOffsetButtons(
+                    appListState = appListState,
+                    isVisible = progress == null && !isSearching,
+                    appsSize = apps.size,
+                )
 
                 AnimatedVisibility(visible = !isSearching) {
                     Menu()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ScrollOffsetButtons(
+    appListState: LazyStaggeredGridState,
+    isVisible: Boolean,
+    appsSize: Int,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+
+    // Combined into one derived state so scrolling invalidates this
+    // subtree at most once per frame, and only this subtree — the
+    // surrounding bottom bar (search field, filter/sort buttons, menu)
+    // doesn't recompose for scroll position changes.
+    val scrollIndices by remember {
+        derivedStateOf {
+            val first = appListState.firstVisibleItemIndex
+            val last = first + appListState.layoutInfo.visibleItemsInfo.size - 1
+
+            first to last
+        }
+    }
+
+    AnimatedVisibility(visible = isVisible && scrollIndices.first > 0) {
+        IconButton(
+            onClick = {
+                scope.launch {
+                    if (scrollIndices.first > 20) {
+                        appListState.scrollToItem(0)
+                    } else {
+                        appListState.animateScrollToItem(0)
+                    }
+                }
+            }
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.scroll_to_top),
+                contentDescription = stringResource(id = R.string.scroll_top)
+            )
+        }
+    }
+
+    AnimatedVisibility(visible = isVisible && scrollIndices.second < appsSize - 1) {
+        IconButton(
+            onClick = {
+                scope.launch {
+                    if (appsSize - 1 - scrollIndices.second > 20) {
+                        appListState.scrollToItem(appsSize - 1)
+                    } else {
+                        appListState.animateScrollToItem(appsSize - 1)
+                    }
+                }
+            }
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.scroll_to_bottom),
+                contentDescription = stringResource(id = R.string.scroll_bottom)
+            )
         }
     }
 }

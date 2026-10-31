@@ -3,9 +3,11 @@ package tk.zwander.rootactivitylauncher.data.model
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -43,6 +45,16 @@ class MainModel(
 
     val query = MutableStateFlow("")
 
+    /**
+     * Debounced version of [query].
+     *
+     * As the user types, this prevents the full filter + sort of every
+     * installed app (and every per-app component pipeline) from running
+     * on every keystroke.
+     */
+    @OptIn(FlowPreview::class)
+    private val debouncedQuery = query.debounce(200).stateIn(scope, SharingStarted.Eagerly, "")
+
     val progress = MutableStateFlow<Float?>(null)
 
     val useRegex = MutableStateFlow(false)
@@ -53,7 +65,7 @@ class MainModel(
     val filteredApps = combine(
         isSearching, useRegex, includeComponents,
         apps, enabledFilterMode, exportedFilterMode,
-        permissionFilterMode, componentFilterMode, query,
+        permissionFilterMode, componentFilterMode, debouncedQuery,
         sortAppsBy, sortOrder, totalInitialSize, systemAppsFilterMode,
     ) { flowValues ->
         val useRegex = flowValues[1] as Boolean
@@ -73,33 +85,56 @@ class MainModel(
                 exportedFilterMode != FilterMode.ExportedFilterMode.ShowAll ||
                 permissionFilterMode != FilterMode.PermissionFilterMode.ShowAll
 
+        // Compile the regex once per emission instead of once per app.
+        val queryRegex = if (useRegex && query.isNotBlank()) {
+            try {
+                Regex(query)
+            } catch (_: PatternSyntaxException) {
+                null
+            }
+        } else {
+            null
+        }
+
         withContext(Dispatchers.IO) {
             val filtered = if (hasFilters ||
                 (componentFilterMode !is FilterMode.HasComponentsFilterMode.ShowAll) ||
                 (systemAppsFilterMode !is FilterMode.SystemAppFilterMode.ShowAll)) {
-                apps.filter { matches(it, query, useRegex, componentFilterMode, systemAppsFilterMode) }
+                apps.filter { matches(it, query, queryRegex, componentFilterMode, systemAppsFilterMode) }
             } else {
                 apps
             }
 
-            val sorted = filtered.sortedWith { o1, o2 ->
+            // Normalize sort keys once per emission instead of per comparison.
+            val labelKeys = if (sortAppsBy == SortMode.SortByName) {
+                HashMap<BaseInfoModel, String>(filtered.size).apply {
+                    filtered.forEach {
+                        if (it is AppModel) {
+                            this[it] = it.label.toString().lowercase()
+                        }
+                    }
+                }
+            } else {
+                null
+            }
+
+            filtered.sortedWith { o1, o2 ->
                 when {
                     o1 is FavoriteModel && o2 !is FavoriteModel -> -1
                     o1 !is FavoriteModel && o2 is FavoriteModel -> 1
                     o1 is AppModel && o2 is AppModel -> {
-                        sortOrder.applyOrder(
-                            when (sortAppsBy) {
-                                SortMode.SortByName -> o1.label.toString().lowercase().compareTo(o2.label.toString().lowercase())
-                                SortMode.SortByInstalledDate -> o1.pInfo.firstInstallTime.compareTo(o2.pInfo.firstInstallTime)
-                                SortMode.SortByUpdatedDate -> o1.pInfo.lastUpdateTime.compareTo(o2.pInfo.lastUpdateTime)
+                        when (sortAppsBy) {
+                            SortMode.SortByName -> {
+                                val keys = labelKeys!!
+                                sortOrder.applyOrder(keys.getValue(o1).compareTo(keys.getValue(o2)))
                             }
-                        )
+                            SortMode.SortByInstalledDate -> sortOrder.applyOrder(o1.pInfo.firstInstallTime.compareTo(o2.pInfo.firstInstallTime))
+                            SortMode.SortByUpdatedDate -> sortOrder.applyOrder(o1.pInfo.lastUpdateTime.compareTo(o2.pInfo.lastUpdateTime))
+                        }
                     }
                     else -> 0
                 }
-            }
-
-            sorted.distinctByPackageName().also {
+            }.distinctByPackageName().also {
                 progress.value = null
             }
         }
@@ -108,7 +143,7 @@ class MainModel(
     private fun matches(
         data: BaseInfoModel,
         query: String,
-        useRegex: Boolean,
+        queryRegex: Regex?,
         componentFilterMode: FilterMode.HasComponentsFilterMode,
         systemAppsFilterMode: FilterMode.SystemAppFilterMode,
     ): Boolean {
@@ -144,17 +179,6 @@ class MainModel(
             }
         }
 
-        val isValidRegex = if (useRegex) {
-            try {
-                Regex(query)
-                true
-            } catch (_: PatternSyntaxException) {
-                false
-            }
-        } else {
-            false
-        }
-
         if (query.isBlank()) return true
 
         val activityFilterEmpty = data.filteredActivities.value.isEmpty()
@@ -171,8 +195,8 @@ class MainModel(
 
             if (advancedMatch) return true
 
-            if (useRegex && isValidRegex) {
-                if (Regex(query).run {
+            if (queryRegex != null) {
+                if (queryRegex.run {
                         containsMatchIn(data.pInfo.packageName)
                                 || containsMatchIn(data.label)
                     }) {

@@ -4,11 +4,15 @@ import android.content.Context
 import android.content.pm.PackageItemInfo
 import android.content.pm.PackageManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import tk.zwander.rootactivitylauncher.data.FilterMode
@@ -65,17 +69,17 @@ abstract class BaseInfoModel(
     val activitiesSize by lazy {
         combine(filteredActivities, hasLoadedActivities, initialActivitiesSize) { f, l, i ->
             if (l) f.size else i
-        }.stateIn(scope, SharingStarted.Eagerly, initialActivitiesSize.value)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), initialActivitiesSize.value)
     }
     val servicesSize by lazy {
         combine(filteredServices, hasLoadedServices, initialServicesSize) { f, l, i ->
             if (l) f.size else i
-        }.stateIn(scope, SharingStarted.Eagerly, initialServicesSize.value)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), initialServicesSize.value)
     }
     val receiversSize by lazy {
         combine(filteredReceivers, hasLoadedReceivers, initialReceiversSize) { f, l, i ->
             if (l) f.size else i
-        }.stateIn(scope, SharingStarted.Eagerly, initialReceiversSize.value)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), initialReceiversSize.value)
     }
 
     private val loadActivitiesMutex = Mutex()
@@ -118,6 +122,7 @@ abstract class BaseInfoModel(
         }
     }
 
+    @OptIn(FlowPreview::class)
     private val realQuery by lazy {
         mainModel.query.combine(mainModel.useRegex) { query, useRegex ->
             if (useRegex) {
@@ -129,7 +134,7 @@ abstract class BaseInfoModel(
             } else {
                 Query.StringQuery(query)
             }
-        }
+        }.debounce(200)
     }
 
     val filteredActivities by lazy {
@@ -159,7 +164,7 @@ abstract class BaseInfoModel(
 
             if ((activitiesExpanded && !hasLoadedActivities) ||
                 ((hasFilters && !isSearching) || (hasFilters && query.raw.isBlank()) || (isSearching && includeComponents))) {
-                loadActivities()
+                scope.launch(Dispatchers.IO) { loadActivities() }
             }
 
             _loadedActivities.filter {
@@ -199,7 +204,7 @@ abstract class BaseInfoModel(
 
             if ((servicesExpanded && !hasLoadedServices) ||
                 ((hasFilters && !isSearching) || (hasFilters && query.raw.isBlank()) || (isSearching && includeComponents))) {
-                loadServices()
+                scope.launch(Dispatchers.IO) { loadServices() }
             }
 
             _loadedServices.filter {
@@ -235,7 +240,7 @@ abstract class BaseInfoModel(
 
             if ((receiversExpanded && !hasLoadedReceivers) ||
                 ((hasFilters && !isSearching) || (hasFilters && query.raw.isBlank()) || (isSearching && includeComponents))) {
-                loadReceivers()
+                scope.launch(Dispatchers.IO) { loadReceivers() }
             }
 
             _loadedReceivers.filter {

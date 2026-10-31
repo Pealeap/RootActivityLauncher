@@ -32,7 +32,7 @@ fun AppList(
     val favoriteModel = LocalFavoriteModel.current
     val favoriteSize by favoriteModel.totalInitialSize.collectAsState()
 
-    val actualFilteredApps = remember(favoriteSize, filteredApps.toList()) {
+    val actualFilteredApps = remember(favoriteSize, filteredApps) {
         if (favoriteSize == 0) filteredApps.filterNot { it == favoriteModel }
         else filteredApps
     }
